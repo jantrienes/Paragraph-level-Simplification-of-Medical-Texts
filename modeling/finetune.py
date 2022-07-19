@@ -227,7 +227,7 @@ class SummarizationModule(BaseTransformer):
 
         batch_size = src_ids.shape[0]
         loss_log = {'ce': loss.item()}
- 
+
         if self.unlikelihood_training:
             ul_loss = self.unlikelihood_loss(decoder_input_ids, lm_logits, self.weight_vector, self.unlikelihood_selective_penalty)
             ul_loss_weighted = ul_loss * self.unlikelihood_alpha
@@ -429,14 +429,14 @@ class SummarizationModule(BaseTransformer):
         parser.add_argument("--unlikelihood_training", action="store_true", help="whether to use unlikelihood training")
         parser.add_argument("--unlikelihood_training_mode", choices=["cochrane", "newsela", "both"], help="which weights to use for unlikelihood training")
 
-        parser.add_argument("--unlikelihood_cochrane_weights_file", 
-                            default="data/logr_weights/bart_freq_normalized_ids.txt", 
-                            type=str, required=False, 
+        parser.add_argument("--unlikelihood_cochrane_weights_file",
+                            default="data/logr_weights/bart_freq_normalized_ids.txt",
+                            type=str, required=False,
                             help="The file containing logistic regression weights learned on the Cochrane dataset for use in unlikelihood training")
 
-        parser.add_argument("--unlikelihood_newsela_weights_file", 
-                            default="data/logr_weights/bart_freq_newsela_ids.txt", 
-                            type=str, required=False, 
+        parser.add_argument("--unlikelihood_newsela_weights_file",
+                            default="data/logr_weights/bart_freq_newsela_ids.txt",
+                            type=str, required=False,
                             help="The file containing logistic regression weights learned on the Newsela dataset for use in unlikelihood training")
 
         parser.add_argument("--unlikelihood_exclude_tokens", default="", type=str, required=False, help="Comma-separated numbers")
@@ -611,6 +611,7 @@ def main(args, model=None) -> SummarizationModule:
             f.write(json.dumps(model.losses, indent=2))
 
     if args.do_generate:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         if args.generate_epoch > -1:
             model = BartForConditionalGeneration.from_pretrained(join(args.output_dir, f'best_tfmr-{args.generate_epoch}'))
@@ -618,7 +619,8 @@ def main(args, model=None) -> SummarizationModule:
             print("********* using fresh model *********")
             args.generate_epoch = 'no-train'
             model = BartForConditionalGeneration.from_pretrained(args.model_name_or_path)
- 
+        model.to(device)
+
         tokenizer = BartTokenizer.from_pretrained(args.model_name_or_path)
         abstracts = list(open(join(args.data_dir, f'{args.generate_input_prefix}.source')).readlines())
         pls = list(open(join(args.data_dir, f'{args.generate_input_prefix}.target')).readlines())
@@ -641,9 +643,10 @@ def main(args, model=None) -> SummarizationModule:
         dois_final = []
         pls_final = []
         gen_final = []
- 
+
         batch = tokenizer(abstracts, padding='max_length', max_length=args.max_source_length, truncation=True, return_tensors='pt')
         input_ids = batch['input_ids']
+        input_ids = input_ids.to(device)
 
         fname_prefix = f'gen_{args.decode_method}_{args.generate_input_prefix}_{args.generate_epoch}_{args.generate_start_index}-{args.generate_end_index}'
         fname_text = fname_prefix + '_text_only.txt'
@@ -654,31 +657,31 @@ def main(args, model=None) -> SummarizationModule:
 
             logs = None
             if args.decode_method=='greedy':
-                gen_ids = model.generate(ids.unsqueeze(0), 
+                gen_ids = model.generate(ids.unsqueeze(0),
                                          do_sample=False,
-                                         max_length=args.max_target_length, 
-                                         early_stopping=False, 
-                                         num_return_sequences=1, 
+                                         max_length=args.max_target_length,
+                                         early_stopping=False,
+                                         num_return_sequences=1,
                                          decoder_start_token_id=model.config.pad_token_id)
             elif args.decode_method=='beam':
-                gen_ids = model.generate(ids.unsqueeze(0), 
+                gen_ids = model.generate(ids.unsqueeze(0),
                                          do_sample=False,
                                          num_beams=args.decode_num_beams,
-                                         max_length=args.max_target_length, 
-                                         early_stopping=False, 
-                                         num_return_sequences=1, 
+                                         max_length=args.max_target_length,
+                                         early_stopping=False,
+                                         num_return_sequences=1,
                                          decoder_start_token_id=model.config.pad_token_id)
             else:
                 gen_ids = model.generate(ids.unsqueeze(0),
                                          do_sample=True,
                                          top_p=args.decode_p,
-                                         max_length=args.max_target_length, 
-                                         early_stopping=False, 
-                                         num_return_sequences=1, 
+                                         max_length=args.max_target_length,
+                                         early_stopping=False,
+                                         num_return_sequences=1,
                                          decoder_start_token_id=model.config.pad_token_id)
-            
+
             gen_text = tokenizer.decode(gen_ids.squeeze(0), skip_special_tokens=True, clean_up_tokenization_spaces=False)
-             
+
             dois_final.append(dois[i])
             abstracts_final.append(abstracts[i])
             pls_final.append(pls[i])
@@ -690,7 +693,7 @@ def main(args, model=None) -> SummarizationModule:
             with open(join(args.output_dir, fname_text), 'a+') as f:
                 f.write(gen_text + '\n----------------------------------------\n')
                 f.flush()
-            
+
             print(gen_text + '\n----------------------------------------\n')
 
         output = [{'doi': d.strip(), 'abstract': a.strip(), 'pls': p.strip(), 'gen': g.strip()} for d,a,p,g in zip(dois_final, abstracts_final, pls_final, gen_final)]
