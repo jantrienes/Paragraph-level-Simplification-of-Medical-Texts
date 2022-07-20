@@ -4,6 +4,7 @@ dummy.sh
 data/dummy
 trained_models/*
 !trained_models/.gitkeep
+lightning_logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
