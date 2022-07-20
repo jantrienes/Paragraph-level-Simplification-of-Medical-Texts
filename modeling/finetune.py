@@ -612,6 +612,7 @@ def main(args, model=None) -> SummarizationModule:
 
     if args.do_generate:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        pl.seed_everything(args.seed)
 
         if args.generate_epoch > -1:
             model = BartForConditionalGeneration.from_pretrained(join(args.output_dir, f'best_tfmr-{args.generate_epoch}'))
